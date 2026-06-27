@@ -2,19 +2,17 @@ package com.watsupwarning;
 
 import android.app.Activity;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
-import android.content.Context;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -43,6 +41,7 @@ public class MainActivity extends Activity {
     private TextView accessState;
     private EditText nameInput;
     private EditText wordsInput;
+    private EditText packageInput;
     private EditText urlInput;
     private EditText tokenInput;
     private Spinner actionSpinner;
@@ -71,7 +70,7 @@ public class MainActivity extends Activity {
 
         TextView title = text("watsupwarning", 32, INK, Typeface.BOLD);
         root.addView(title);
-        root.addView(text("Keyword-triggered actions from Android notification popups.", 15, MUTED, Typeface.NORMAL));
+        root.addView(text("Flexible filters and actions from Android notification popups.", 15, MUTED, Typeface.NORMAL));
 
         LinearLayout statusCard = card();
         statusCard.setPadding(dp(18), dp(16), dp(18), dp(16));
@@ -87,11 +86,13 @@ public class MainActivity extends Activity {
         form.addView(sectionTitle("New rule"));
         nameInput = input("Rule name, for example Temperature request");
         wordsInput = input("Words, comma separated: temp, temperatura, heat");
+        packageInput = input("Optional app package, for example com.whatsapp");
         actionSpinner = new Spinner(this);
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, Arrays.asList("Log only", "Home Assistant"));
         actionSpinner.setAdapter(adapter);
         form.addView(nameInput);
         form.addView(wordsInput);
+        form.addView(packageInput);
         form.addView(actionSpinner);
         urlInput = input("Home Assistant webhook/API URL");
         tokenInput = input("Bearer token, optional");
@@ -134,7 +135,8 @@ public class MainActivity extends Activity {
     private void addRule() {
         String name = nameInput.getText().toString().trim();
         List<String> words = parseWords(wordsInput.getText().toString());
-        String action = actionSpinner.getSelectedItemPosition() == 1 ? Rule.ACTION_HOME_ASSISTANT : Rule.ACTION_LOG;
+        String packageName = packageInput.getText().toString().trim();
+        String action = actionSpinner.getSelectedItemPosition() == 1 ? RuleAction.TYPE_HOME_ASSISTANT : RuleAction.TYPE_LOG;
         if (name.isEmpty()) {
             name = words.isEmpty() ? "Untitled rule" : words.get(0);
         }
@@ -142,13 +144,25 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Add at least one word to match.", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (Rule.ACTION_HOME_ASSISTANT.equals(action) && urlInput.getText().toString().trim().isEmpty()) {
+        if (RuleAction.TYPE_HOME_ASSISTANT.equals(action) && urlInput.getText().toString().trim().isEmpty()) {
             Toast.makeText(this, "Home Assistant actions need a URL.", Toast.LENGTH_SHORT).show();
             return;
         }
-        RuleStore.addRule(this, Rule.create(name, words, action, urlInput.getText().toString(), tokenInput.getText().toString()));
+        List<RuleFilter> filters = new ArrayList<>();
+        filters.add(new KeywordFilter(words));
+        if (!packageName.isEmpty()) {
+            filters.add(new PackageFilter(packageName));
+        }
+        List<RuleAction> actions = new ArrayList<>();
+        if (RuleAction.TYPE_HOME_ASSISTANT.equals(action)) {
+            actions.add(new HomeAssistantAction(urlInput.getText().toString(), tokenInput.getText().toString()));
+        } else {
+            actions.add(new LogAction());
+        }
+        RuleStore.addRule(this, Rule.create(name, filters, actions));
         nameInput.setText("");
         wordsInput.setText("");
+        packageInput.setText("");
         urlInput.setText("");
         tokenInput.setText("");
         hideKeyboard();
@@ -188,9 +202,8 @@ public class MainActivity extends Activity {
 
         TextView name = text(rule.name, 16, INK, Typeface.BOLD);
         row.addView(name);
-        row.addView(text(TextUtils.join(", ", rule.keywords), 14, MUTED, Typeface.NORMAL));
-        String action = Rule.ACTION_HOME_ASSISTANT.equals(rule.actionType) ? "Home Assistant" : "Log only";
-        row.addView(text(action, 13, TEAL, Typeface.BOLD));
+        row.addView(text(TextUtils.join(" + ", filterSummaries(rule)), 14, MUTED, Typeface.NORMAL));
+        row.addView(text(TextUtils.join(", ", actionSummaries(rule)), 13, TEAL, Typeface.BOLD));
         Button delete = button("Delete", Color.rgb(235, 235, 232), INK);
         delete.setOnClickListener(v -> {
             RuleStore.deleteRule(this, rule.id);
@@ -219,6 +232,22 @@ public class MainActivity extends Activity {
             }
         }
         return words;
+    }
+
+    private List<String> filterSummaries(Rule rule) {
+        List<String> summaries = new ArrayList<>();
+        for (RuleFilter filter : rule.filters) {
+            summaries.add(filter.summary());
+        }
+        return summaries;
+    }
+
+    private List<String> actionSummaries(Rule rule) {
+        List<String> summaries = new ArrayList<>();
+        for (RuleAction action : rule.actions) {
+            summaries.add(action.summary());
+        }
+        return summaries;
     }
 
     private LinearLayout card() {
@@ -307,9 +336,5 @@ public class MainActivity extends Activity {
         if (imm != null) {
             imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
         }
-    }
-
-    public void openProjectPage(View view) {
-        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/")));
     }
 }

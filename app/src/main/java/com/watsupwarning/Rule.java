@@ -6,80 +6,90 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 
 final class Rule {
-    static final String ACTION_LOG = "log";
-    static final String ACTION_HOME_ASSISTANT = "home_assistant";
-
     final String id;
     final String name;
-    final List<String> keywords;
-    final String actionType;
-    final String actionUrl;
-    final String bearerToken;
+    final List<RuleFilter> filters;
+    final List<RuleAction> actions;
     final boolean enabled;
 
-    Rule(String id, String name, List<String> keywords, String actionType, String actionUrl, String bearerToken, boolean enabled) {
+    Rule(String id, String name, List<RuleFilter> filters, List<RuleAction> actions, boolean enabled) {
         this.id = id;
         this.name = name;
-        this.keywords = keywords;
-        this.actionType = actionType;
-        this.actionUrl = actionUrl;
-        this.bearerToken = bearerToken;
+        this.filters = filters;
+        this.actions = actions;
         this.enabled = enabled;
     }
 
-    static Rule create(String name, List<String> keywords, String actionType, String actionUrl, String bearerToken) {
-        return new Rule(UUID.randomUUID().toString(), name, keywords, actionType, actionUrl, bearerToken, true);
+    static Rule create(String name, List<RuleFilter> filters, List<RuleAction> actions) {
+        return new Rule(UUID.randomUUID().toString(), name, filters, actions, true);
     }
 
-    boolean matches(String text) {
-        if (!enabled || text == null) {
+    boolean matches(NotificationEvent event) {
+        if (!enabled || event == null || filters.isEmpty()) {
             return false;
         }
-        String haystack = text.toLowerCase(Locale.ROOT);
-        for (String keyword : keywords) {
-            String needle = keyword.trim().toLowerCase(Locale.ROOT);
-            if (!needle.isEmpty() && haystack.contains(needle)) {
-                return true;
+        for (RuleFilter filter : filters) {
+            if (!filter.matches(event)) {
+                return false;
             }
         }
-        return false;
+        return true;
     }
 
     JSONObject toJson() throws JSONException {
         JSONObject object = new JSONObject();
         object.put("id", id);
         object.put("name", name);
-        object.put("actionType", actionType);
-        object.put("actionUrl", actionUrl);
-        object.put("bearerToken", bearerToken);
         object.put("enabled", enabled);
-        JSONArray words = new JSONArray();
-        for (String keyword : keywords) {
-            words.put(keyword);
+        JSONArray filterArray = new JSONArray();
+        for (RuleFilter filter : filters) {
+            filterArray.put(filter.toJson());
         }
-        object.put("keywords", words);
+        object.put("filters", filterArray);
+        JSONArray actionArray = new JSONArray();
+        for (RuleAction action : actions) {
+            actionArray.put(action.toJson());
+        }
+        object.put("actions", actionArray);
         return object;
     }
 
     static Rule fromJson(JSONObject object) throws JSONException {
-        JSONArray words = object.optJSONArray("keywords");
-        List<String> keywords = new ArrayList<>();
-        if (words != null) {
-            for (int i = 0; i < words.length(); i++) {
-                keywords.add(words.optString(i));
+        List<RuleFilter> filters = new ArrayList<>();
+        JSONArray filterArray = object.optJSONArray("filters");
+        if (filterArray != null) {
+            for (int i = 0; i < filterArray.length(); i++) {
+                filters.add(RuleFilter.fromJson(filterArray.getJSONObject(i)));
             }
         }
+        JSONArray legacyWords = object.optJSONArray("keywords");
+        if (filters.isEmpty() && legacyWords != null) {
+            filters.add(new KeywordFilter(RuleFilter.readStringArray(legacyWords)));
+        }
+
+        List<RuleAction> actions = new ArrayList<>();
+        JSONArray actionArray = object.optJSONArray("actions");
+        if (actionArray != null) {
+            for (int i = 0; i < actionArray.length(); i++) {
+                actions.add(RuleAction.fromJson(actionArray.getJSONObject(i)));
+            }
+        }
+        String legacyAction = object.optString("actionType", "");
+        if (actions.isEmpty() && RuleAction.TYPE_HOME_ASSISTANT.equals(legacyAction)) {
+            actions.add(new HomeAssistantAction(object.optString("actionUrl", ""), object.optString("bearerToken", "")));
+        }
+        if (actions.isEmpty()) {
+            actions.add(new LogAction());
+        }
+
         return new Rule(
                 object.optString("id", UUID.randomUUID().toString()),
                 object.optString("name", "Rule"),
-                keywords,
-                object.optString("actionType", ACTION_LOG),
-                object.optString("actionUrl", ""),
-                object.optString("bearerToken", ""),
+                filters,
+                actions,
                 object.optBoolean("enabled", true)
         );
     }

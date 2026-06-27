@@ -16,11 +16,11 @@ public class NotificationWatchService extends NotificationListenerService {
         CharSequence bigTextValue = sbn.getNotification().extras.getCharSequence("android.bigText");
         String title = titleValue == null ? "" : titleValue.toString();
         String text = firstNonEmpty(bigTextValue, textValue);
-        String searchable = title + "\n" + text;
+        NotificationEvent event = new NotificationEvent(sbn.getPackageName(), title, text);
         List<Rule> rules = RuleStore.loadRules(this);
         for (Rule rule : rules) {
-            if (rule.matches(searchable)) {
-                ActionRunner.run(this, rule, sbn.getPackageName(), title, text);
+            if (rule.matches(event)) {
+                ActionRunner.run(this, rule, event);
             }
         }
     }
