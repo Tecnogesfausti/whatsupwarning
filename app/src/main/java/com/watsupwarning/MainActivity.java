@@ -48,6 +48,8 @@ public class MainActivity extends Activity {
     private EditText packageInput;
     private EditText urlInput;
     private EditText tokenInput;
+    private EditText entityInput;
+    private EditText labelInput;
     private Spinner actionSpinner;
 
     @Override
@@ -106,7 +108,7 @@ public class MainActivity extends Activity {
         wordsInput = input("Words, comma separated: temp, temperatura, heat");
         packageInput = input("Optional app package, for example com.whatsapp");
         actionSpinner = new Spinner(this);
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, Arrays.asList("Log only", "Home Assistant"));
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, Arrays.asList("Log only", "Home Assistant", "Speak HA state"));
         actionSpinner.setAdapter(adapter);
         form.addView(nameInput);
         form.addView(wordsInput);
@@ -114,14 +116,21 @@ public class MainActivity extends Activity {
         form.addView(actionSpinner);
         urlInput = input("Home Assistant API path or full URL");
         tokenInput = input("Bearer token override, optional");
+        entityInput = input("HA entity, for example sensor.itorre692_temperature");
+        labelInput = input("Spoken label, for example la casa");
         form.addView(urlInput);
         form.addView(tokenInput);
+        form.addView(entityInput);
+        form.addView(labelInput);
         actionSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                boolean ha = position == 1;
-                urlInput.setVisibility(ha ? View.VISIBLE : View.GONE);
-                tokenInput.setVisibility(ha ? View.VISIBLE : View.GONE);
+                boolean haPost = position == 1;
+                boolean haSpeak = position == 2;
+                urlInput.setVisibility(haPost ? View.VISIBLE : View.GONE);
+                tokenInput.setVisibility((haPost || haSpeak) ? View.VISIBLE : View.GONE);
+                entityInput.setVisibility(haSpeak ? View.VISIBLE : View.GONE);
+                labelInput.setVisibility(haSpeak ? View.VISIBLE : View.GONE);
             }
 
             @Override
@@ -131,6 +140,9 @@ public class MainActivity extends Activity {
         Button add = button("Add rule", GOLD, INK);
         add.setOnClickListener(v -> addRule());
         form.addView(add);
+        Button preset = button("Preset: temperaturas casa", Color.rgb(235, 235, 232), INK);
+        preset.setOnClickListener(v -> fillTemperaturePreset());
+        form.addView(preset);
         root.addView(form);
 
         LinearLayout rulesCard = card();
@@ -154,7 +166,8 @@ public class MainActivity extends Activity {
         String name = nameInput.getText().toString().trim();
         List<String> words = parseWords(wordsInput.getText().toString());
         String packageName = packageInput.getText().toString().trim();
-        String action = actionSpinner.getSelectedItemPosition() == 1 ? RuleAction.TYPE_HOME_ASSISTANT : RuleAction.TYPE_LOG;
+        int actionPosition = actionSpinner.getSelectedItemPosition();
+        String action = actionType(actionPosition);
         if (name.isEmpty()) {
             name = words.isEmpty() ? "Untitled rule" : words.get(0);
         }
@@ -166,6 +179,10 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Home Assistant actions need a URL.", Toast.LENGTH_SHORT).show();
             return;
         }
+        if (RuleAction.TYPE_SPEAK_HOME_ASSISTANT_STATE.equals(action) && entityInput.getText().toString().trim().isEmpty()) {
+            Toast.makeText(this, "Spoken state actions need an entity.", Toast.LENGTH_SHORT).show();
+            return;
+        }
         List<RuleFilter> filters = new ArrayList<>();
         filters.add(new KeywordFilter(words));
         if (!packageName.isEmpty()) {
@@ -174,6 +191,12 @@ public class MainActivity extends Activity {
         List<RuleAction> actions = new ArrayList<>();
         if (RuleAction.TYPE_HOME_ASSISTANT.equals(action)) {
             actions.add(new HomeAssistantAction(urlInput.getText().toString(), tokenInput.getText().toString()));
+        } else if (RuleAction.TYPE_SPEAK_HOME_ASSISTANT_STATE.equals(action)) {
+            actions.add(new SpeakHomeAssistantStateAction(
+                    entityInput.getText().toString(),
+                    labelInput.getText().toString(),
+                    tokenInput.getText().toString()
+            ));
         } else {
             actions.add(new LogAction());
         }
@@ -183,8 +206,21 @@ public class MainActivity extends Activity {
         packageInput.setText("");
         urlInput.setText("");
         tokenInput.setText("");
+        entityInput.setText("");
+        labelInput.setText("");
         hideKeyboard();
         refresh();
+    }
+
+    private void fillTemperaturePreset() {
+        nameInput.setText("Temperaturas de la casa");
+        wordsInput.setText("Dame las temperaturas de la casa");
+        packageInput.setText("");
+        actionSpinner.setSelection(2);
+        entityInput.setText("sensor.itorre692_temperature");
+        labelInput.setText("la casa");
+        urlInput.setText("");
+        tokenInput.setText("");
     }
 
     private void saveHomeAssistant() {
@@ -279,6 +315,16 @@ public class MainActivity extends Activity {
             summaries.add(action.summary());
         }
         return summaries;
+    }
+
+    private String actionType(int position) {
+        if (position == 1) {
+            return RuleAction.TYPE_HOME_ASSISTANT;
+        }
+        if (position == 2) {
+            return RuleAction.TYPE_SPEAK_HOME_ASSISTANT_STATE;
+        }
+        return RuleAction.TYPE_LOG;
     }
 
     private LinearLayout card() {

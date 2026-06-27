@@ -44,6 +44,17 @@ Then a rule action can use either:
 
 The app sends a JSON body with the matched rule name, Android package, notification title, and notification text.
 
+## First Temperature Rule
+
+Use the preset button in the app:
+
+- Phrase: `Dame las temperaturas de la casa`
+- Action: `Speak HA state`
+- Entity: `sensor.itorre692_temperature`
+- Spoken label: `la casa`
+
+When a notification contains that phrase, the app asks Home Assistant for `/api/states/sensor.itorre692_temperature` and speaks the result in Spanish. The app uses Android TTS on the media stream and temporarily raises media volume so it can be heard when the phone is in silent mode.
+
 ## Build
 
 ```bash
