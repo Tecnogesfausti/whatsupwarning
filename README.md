@@ -28,6 +28,22 @@ Current filters:
 - `KeywordFilter`: matches any configured word in notification title/body.
 - `PackageFilter`: optionally limits the rule to one Android package such as `com.whatsapp`.
 
+## Home Assistant
+
+Home Assistant credentials are runtime settings stored on the phone, not committed to the repository.
+
+In the app, save:
+
+- Base URL, for example `http://homeassistant.local:8123` or a public host.
+- Long-lived access token.
+
+Then a rule action can use either:
+
+- A full URL, for example `http://homeassistant.local:8123/api/webhook/example`.
+- A relative API path, for example `/api/services/script/turn_on`.
+
+The app sends a JSON body with the matched rule name, Android package, notification title, and notification text.
+
 ## Build
 
 ```bash

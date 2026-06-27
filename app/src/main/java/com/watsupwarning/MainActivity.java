@@ -9,6 +9,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.text.InputType;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
@@ -39,6 +40,9 @@ public class MainActivity extends Activity {
     private LinearLayout rulesList;
     private LinearLayout eventsList;
     private TextView accessState;
+    private TextView haState;
+    private EditText haBaseUrlInput;
+    private EditText haTokenInput;
     private EditText nameInput;
     private EditText wordsInput;
     private EditText packageInput;
@@ -82,6 +86,20 @@ public class MainActivity extends Activity {
         statusCard.addView(settings);
         root.addView(statusCard);
 
+        LinearLayout haCard = card();
+        haCard.addView(sectionTitle("Home Assistant"));
+        haState = text("", 14, MUTED, Typeface.NORMAL);
+        haCard.addView(haState);
+        haBaseUrlInput = input("Base URL, for example http://homeassistant.local:8123");
+        haTokenInput = input("Long-lived access token");
+        haTokenInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        haCard.addView(haBaseUrlInput);
+        haCard.addView(haTokenInput);
+        Button saveHa = button("Save Home Assistant", TEAL, Color.WHITE);
+        saveHa.setOnClickListener(v -> saveHomeAssistant());
+        haCard.addView(saveHa);
+        root.addView(haCard);
+
         LinearLayout form = card();
         form.addView(sectionTitle("New rule"));
         nameInput = input("Rule name, for example Temperature request");
@@ -94,8 +112,8 @@ public class MainActivity extends Activity {
         form.addView(wordsInput);
         form.addView(packageInput);
         form.addView(actionSpinner);
-        urlInput = input("Home Assistant webhook/API URL");
-        tokenInput = input("Bearer token, optional");
+        urlInput = input("Home Assistant API path or full URL");
+        tokenInput = input("Bearer token override, optional");
         form.addView(urlInput);
         form.addView(tokenInput);
         actionSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -169,10 +187,23 @@ public class MainActivity extends Activity {
         refresh();
     }
 
+    private void saveHomeAssistant() {
+        HomeAssistantSettings.save(this, haBaseUrlInput.getText().toString(), haTokenInput.getText().toString());
+        hideKeyboard();
+        refresh();
+        Toast.makeText(this, "Home Assistant settings saved.", Toast.LENGTH_SHORT).show();
+    }
+
     private void refresh() {
         boolean enabled = notificationAccessEnabled();
         accessState.setText(enabled ? "Notification access is enabled" : "Notification access is not enabled");
         accessState.setTextColor(enabled ? TEAL : Color.rgb(149, 72, 48));
+        String baseUrl = HomeAssistantSettings.getBaseUrl(this);
+        String token = HomeAssistantSettings.getToken(this);
+        haBaseUrlInput.setText(baseUrl);
+        haTokenInput.setText(token);
+        haState.setText(baseUrl.isEmpty() ? "No Home Assistant base URL saved." : "Using " + baseUrl);
+        haState.setTextColor(baseUrl.isEmpty() ? MUTED : TEAL);
 
         rulesList.removeAllViews();
         List<Rule> rules = RuleStore.loadRules(this);

@@ -89,19 +89,21 @@ final class HomeAssistantAction extends RuleAction {
     }
 
     private void callHomeAssistant(Context context, Rule rule, NotificationEvent event) {
-        if (url.trim().isEmpty()) {
+        String resolvedUrl = HomeAssistantSettings.resolveUrl(context, url);
+        if (resolvedUrl.trim().isEmpty()) {
             RuleStore.recordEvent(context, "Home Assistant skipped: missing URL for " + rule.name);
             return;
         }
         HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(url.trim()).openConnection();
+            connection = (HttpURLConnection) new URL(resolvedUrl).openConnection();
             connection.setConnectTimeout(7000);
             connection.setReadTimeout(7000);
             connection.setRequestMethod("POST");
             connection.setRequestProperty("Content-Type", "application/json");
-            if (!bearerToken.trim().isEmpty()) {
-                connection.setRequestProperty("Authorization", "Bearer " + bearerToken.trim());
+            String token = bearerToken.trim().isEmpty() ? HomeAssistantSettings.getToken(context) : bearerToken.trim();
+            if (!token.isEmpty()) {
+                connection.setRequestProperty("Authorization", "Bearer " + token);
             }
             connection.setDoOutput(true);
             byte[] body = buildBody(rule, event).getBytes(StandardCharsets.UTF_8);
